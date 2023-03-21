@@ -1,12 +1,22 @@
-import { Controller, Get } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import { AppService } from './app.service';
+import { ClientService } from './client/client.service';
+import { Client } from './client/entities/client.entity';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(
+    private readonly appService: AppService,
+    private readonly clientService: ClientService,
+  ) {}
 
-  @Get('notifications')
-  getHello(): string {
-    return this.appService.getHello();
+  @Post('notifications')
+  sendNotification(): string {
+    return this.appService.sendNotification();
+  }
+
+  @Post('client')
+  async createClient(@Body() client: Client) {
+    return await this.clientService.create(client);
   }
 }

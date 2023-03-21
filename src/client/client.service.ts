@@ -13,4 +13,8 @@ export class ClientService {
   async findOne(clientId: string) {
     return this.clientRepository.findOne({ where: { clientId } });
   }
+
+  async create(client: Client) {
+    return this.clientRepository.save(client);
+  }
 }
