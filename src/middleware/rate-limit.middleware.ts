@@ -71,13 +71,26 @@ export class RateLimitMiddleware {
       }
 
       const requestTimestamp = Date.now();
-      const { allowed, limitType, retryAfter } =
+      const { allowed, limitType, retryAfter, throttleType } =
         await this.rateLimiter.isRequestAllowed(client, requestTimestamp);
 
       if (allowed) {
         next();
       } else {
         let message: string;
+        let statusCode: number;
+
+        switch (throttleType) {
+          case 'soft':
+            statusCode = 429;
+            break;
+          case 'hard':
+            statusCode = 503;
+            break;
+          default:
+            statusCode = 429;
+        }
+
         switch (limitType) {
           case 'global':
             message = 'Global Request Limit Exceeded';
@@ -90,7 +103,7 @@ export class RateLimitMiddleware {
             break;
         }
         res
-          .status(429)
+          .status(statusCode)
           .header(
             'Retry-After',
             retryAfter ? Math.ceil(retryAfter / 1000).toString() : undefined,

@@ -25,6 +25,7 @@ export class RateLimiter {
     allowed: boolean;
     limitType: string | null;
     retryAfter?: number;
+    throttleType?: 'soft' | 'hard';
   }> {
     const clientId = client.clientId;
 
@@ -39,7 +40,12 @@ export class RateLimiter {
       this.redisClient.incr(globalKey);
     } else {
       const retryAfter = 1000 - (requestTimestamp % 1000);
-      return { allowed: false, limitType: 'global', retryAfter };
+      return {
+        allowed: false,
+        limitType: 'global',
+        retryAfter,
+        throttleType: 'soft',
+      };
     }
 
     const { requestPerSecond, requestPerMonth } = await this.getClientLimits(
@@ -57,7 +63,12 @@ export class RateLimiter {
       this.redisClient.incr(secondKey);
     } else {
       const retryAfter = 1000 - (requestTimestamp % 1000);
-      return { allowed: false, limitType: 'second', retryAfter };
+      return {
+        allowed: false,
+        limitType: 'second',
+        retryAfter,
+        throttleType: 'soft',
+      };
     }
 
     const monthKey = `rate_limit:month:${clientId}:${Math.floor(
@@ -76,8 +87,15 @@ export class RateLimiter {
       nextMonth.setDate(1);
       nextMonth.setHours(0, 0, 0, 0);
       const retryAfter = nextMonth.getTime() - requestTimestamp;
-      return { allowed: false, limitType: 'month', retryAfter };
+      return {
+        allowed: false,
+        limitType: 'month',
+        retryAfter,
+        throttleType: 'soft',
+      };
     }
+
+    //Return throttleType: 'hard' if client keeps making more request after the soft throttle for a certain number of time.
 
     return { allowed: true, limitType: null };
   }
