@@ -3,10 +3,13 @@ import { Request, Response, NextFunction } from 'express';
 import { RateLimiter } from '../utils/RateLimiter';
 import { Redis } from 'ioredis';
 import { ClientService } from '../client/client.service';
+import { Client } from '../client/entities/client.entity';
 
 @Injectable()
 export class RateLimitMiddleware {
   private readonly rateLimiter: RateLimiter;
+  private readonly redisClient: Redis;
+  private readonly clientDataPrefix: string;
 
   constructor(
     redisClient: Redis,
@@ -15,6 +18,25 @@ export class RateLimitMiddleware {
     // NOTE(@Luthfulahi): This is a global request limit for the entire system should be determined based on the number of clients, capacity of the server and desired performance
     const globalRequestLimit = 1000;
     this.rateLimiter = new RateLimiter(redisClient, globalRequestLimit);
+    this.redisClient = redisClient;
+    this.clientDataPrefix = 'client-data:';
+  }
+
+  private async getClientDataFromCache(clientId: string) {
+    const clientData = await this.redisClient.get(
+      `${this.clientDataPrefix}${clientId}`,
+    );
+
+    return clientData ? JSON.parse(clientData) : null;
+  }
+
+  private async setClientDataToCache(clientId: string, clientData: any) {
+    const key = `${this.clientDataPrefix}${clientId}`;
+    const clientDataJson = JSON.stringify(clientData);
+
+    const cacheExpirationTime = 60 * 60;
+
+    await this.redisClient.setex(key, cacheExpirationTime, clientDataJson);
   }
 
   handler() {
@@ -26,7 +48,22 @@ export class RateLimitMiddleware {
         return;
       }
 
-      const client = await this.clientService.findOne(clientId);
+      const clientData = await this.getClientDataFromCache(clientId);
+
+      let client: Client;
+      if (clientData) {
+        client = clientData;
+      } else {
+        client = await this.clientService.findOne(clientId);
+        if (client) {
+          await this.setClientDataToCache(clientId, client);
+        }
+      }
+
+      if (!client) {
+        res.status(401).json({ message: 'Unauthorized' });
+        return;
+      }
 
       if (!client) {
         res.status(401).json({ message: 'Unauthorized' });
@@ -40,7 +77,7 @@ export class RateLimitMiddleware {
       if (allowed) {
         next();
       } else {
-        let message;
+        let message: string;
         switch (limitType) {
           case 'global':
             message = 'Global Request Limit Exceeded';
